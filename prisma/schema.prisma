@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  BUSINESS_ADMIN
+  WORKER
+}
+
+enum BookingStatus {
+  INQUIRY
+  TENTATIVE
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMode {
+  ZELLE
+  VENMO
+  APPLE_CASH
+  CASH
+  OTHER
+}
+
+enum BalanceStatus {
+  PENDING
+  COLLECTED
+}
+
+enum AttachmentType {
+  CONTRACT
+  INVOICE
+  AGREEMENT
+  EVENT_DETAILS
+  OTHER
+}
+
+model Business {
+  id                 String          @id @default(cuid())
+  slug               String          @unique
+  name               String
+  phone              String?
+  email              String?
+  address            String?
+  logoUrl            String?
+  brandColor         String?         @default("#6d28d9")
+  subscriptionTier   String?         @default("starter")
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  users              User[]
+  workers            Worker[]
+  customers          Customer[]
+  bookings           Booking[]
+  payments           Payment[]
+  attachments        Attachment[]
+  auditLogs          AuditLog[]
+  brandingSetting    BrandingSetting?
+}
+
+model User {
+  id             String      @id @default(cuid())
+  businessId     String?
+  name           String
+  email          String      @unique
+  passwordHash   String
+  role           Role
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  business       Business?   @relation(fields: [businessId], references: [id])
+  workerProfile  Worker?
+  auditLogs      AuditLog[]
+}
+
+model Worker {
+  id             String      @id @default(cuid())
+  businessId     String
+  userId         String?     @unique
+  name           String
+  email          String
+  phone          String?
+  roleLabel      String      @default("Staff")
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  business       Business    @relation(fields: [businessId], references: [id])
+  user           User?       @relation(fields: [userId], references: [id])
+  assignedJobs   Booking[]
+
+  @@unique([businessId, email])
+}
+
+model Customer {
+  id             String      @id @default(cuid())
+  businessId     String
+  fullName       String
+  phone          String
+  email          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  business       Business    @relation(fields: [businessId], references: [id])
+  bookings       Booking[]
+
+  @@index([businessId, fullName])
+  @@index([businessId, phone])
+}
+
+model Booking {
+  id                    String         @id @default(cuid())
+  businessId            String
+  customerId            String
+  assignedWorkerId      String?
+  eventType             String
+  eventDate             DateTime
+  serviceStartTime      DateTime
+  serviceEndTime        DateTime
+  serviceAddress        String
+  city                  String
+  state                 String
+  zipCode               String
+  notes                 String?
+  peopleCount           Int
+  quotedTotal           Decimal        @db.Decimal(10, 2)
+  depositSubmitted      Boolean        @default(false)
+  depositAmount         Decimal        @default(0) @db.Decimal(10, 2)
+  depositPaymentMode    PaymentMode?
+  remainingBalance      Decimal        @default(0) @db.Decimal(10, 2)
+  remainingBalanceState BalanceStatus  @default(PENDING)
+  finalPaymentMode      PaymentMode?
+  paymentNotes          String?
+  status                BookingStatus  @default(INQUIRY)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  business              Business       @relation(fields: [businessId], references: [id])
+  customer              Customer       @relation(fields: [customerId], references: [id])
+  assignedWorker        Worker?        @relation(fields: [assignedWorkerId], references: [id])
+  payments              Payment[]
+  attachments           Attachment[]
+  auditLogs             AuditLog[]
+
+  @@index([businessId, eventDate])
+  @@index([businessId, status])
+}
+
+model Payment {
+  id                String       @id @default(cuid())
+  businessId        String
+  bookingId         String
+  amount            Decimal      @db.Decimal(10, 2)
+  paymentMode       PaymentMode
+  isDeposit         Boolean      @default(false)
+  note              String?
+  paidAt            DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  business          Business     @relation(fields: [businessId], references: [id])
+  booking           Booking      @relation(fields: [bookingId], references: [id])
+
+  @@index([businessId, paidAt])
+}
+
+model Attachment {
+  id              String         @id @default(cuid())
+  businessId      String
+  bookingId       String
+  fileName        String
+  storagePath     String
+  fileSizeBytes   Int
+  mimeType        String
+  type            AttachmentType @default(OTHER)
+  uploadedAt      DateTime       @default(now())
+  business        Business       @relation(fields: [businessId], references: [id])
+  booking         Booking        @relation(fields: [bookingId], references: [id])
+
+  @@index([businessId, bookingId])
+}
+
+model BrandingSetting {
+  id             String      @id @default(cuid())
+  businessId     String      @unique
+  logoUrl        String?
+  brandName      String
+  contactEmail   String?
+  contactPhone   String?
+  address        String?
+  brandColor     String      @default("#6d28d9")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  business       Business    @relation(fields: [businessId], references: [id])
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  businessId     String
+  bookingId      String?
+  actorUserId    String?
+  action         String
+  entityType     String
+  entityId       String
+  diffJson       Json?
+  createdAt      DateTime    @default(now())
+  business       Business    @relation(fields: [businessId], references: [id])
+  actorUser      User?       @relation(fields: [actorUserId], references: [id])
+  booking        Booking?    @relation(fields: [bookingId], references: [id])
+
+  @@index([businessId, createdAt])
+}
